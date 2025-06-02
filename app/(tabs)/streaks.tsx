@@ -144,16 +144,27 @@ export default function StreakScreen() {
   };
 
   const habitStreaks = habits?.map((habit) => {
-    const { streak, bestStreak, totalStreak } = getStreakData(habit.$id);
+    const { streak, bestStreak = 0, totalStreak } = getStreakData(habit.$id);
     return { habit, streak, bestStreak, totalStreak };
   });
-
-  const rankedHabits = habitStreaks?.sort(
-    (a, b) => a.bestStreak - b.bestStreak
+  
+  const rankedHabits = habitStreaks.sort((a, b) => a.bestStreak - b.bestStreak // Sort in descending order if needed
   );
+
+  const badgeStyles = 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Habits Streak</Text>
+      {rankedHabits?.length > 0 && (
+        <View>
+          <Text>🥇 Top Streaks</Text>
+          {rankedHabits.slice(0, 3).map(({ item, key }) => (
+            <View key={key}>
+
+            </View>
+          ))}
+        </View>
+      )}
       {habits?.length === 0 ? (
         <View>
           <Text>No Habits yet. Add Habit</Text>
