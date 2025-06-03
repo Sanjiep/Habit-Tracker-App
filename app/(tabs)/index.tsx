@@ -45,7 +45,9 @@ export default function Index() {
         }
       }
     );
+
     
+
     const channelCompletions = `databases.${DATABASE_ID}.collections.${COMPLETIONS_COLLECTION_ID}.documents`;
     const subscribeCompletions = client.subscribe(
       channelCompletions,
@@ -97,7 +99,7 @@ export default function Index() {
         ]
       );
 
-      const completions = response.documents as HabitCompletion[]
+      const completions = response.documents as HabitCompletion[];
       setCompletedHabits(completions.map((c) => c.habit_id));
     } catch (error) {
       console.error("Error fetching habits:", error);
@@ -126,20 +128,28 @@ export default function Index() {
           completed_at: currentDate,
         }
       );
-
+  
       const habit = habits?.find((h) => h.$id === id);
       if (!habit) return;
-
+  
       await databases.updateDocument(DATABASE_ID, HABITS_COLLECTION_ID, id, {
         streak_count: habit.streak_count + 1,
         last_completed: currentDate,
       });
+  
+      // ✅ Immediately update UI
+      await fetchTodayCompletions();
+      await fetchHabits();
+      // setRefreshKey((prev) => prev + 1); // optional if still not rendering
     } catch (error) {
       console.error(error);
     }
   };
+  
+  
 
-  const isHabitCompleted = (habitId: string) => completedHabits?.includes(habitId);
+  const isHabitCompleted = (habitId: string) =>
+    completedHabits?.includes(habitId);
 
   const renderLeftAction = () => (
     <View style={styles.leftAction}>
@@ -155,12 +165,12 @@ export default function Index() {
     <View style={styles.rightAction}>
       {isHabitCompleted(habitID) ? (
         <Text style={styles.text}>Completed!</Text>
-      ):(
-      <MaterialCommunityIcons
-        name="check-circle"
-        size={32}
-        color="#fff"
-        style={{ marginRight: 10, marginTop: 10 }}
+      ) : (
+        <MaterialCommunityIcons
+          name="check-circle"
+          size={32}
+          color="#fff"
+          style={{ marginRight: 10, marginTop: 10 }}
         />
       )}
     </View>
@@ -196,7 +206,7 @@ export default function Index() {
               overshootLeft={false}
               overshootRight={false}
               renderLeftActions={renderLeftAction}
-              renderRightActions={()=> renderRightAction(habit.$id)}
+              renderRightActions={() => renderRightAction(habit.$id)}
               onSwipeableOpen={(direction) => {
                 if (direction === "left") {
                   handleDeleteHabit(habit.$id);
@@ -206,7 +216,14 @@ export default function Index() {
                 }
               }}
             >
-              <Surface key={habit.$id} style={[styles.card,isHabitCompleted(habit.$id) && styles.cardCompleted]} elevation={1}>
+              <Surface
+                key={habit.$id}
+                style={[
+                  styles.card,
+                  isHabitCompleted(habit.$id) && styles.cardCompleted,
+                ]}
+                elevation={1}
+              >
                 <View style={styles.cardHabit}>
                   <Text style={styles.cardTitle}>{habit.title}</Text>
                   <Text style={styles.cardDescription}>

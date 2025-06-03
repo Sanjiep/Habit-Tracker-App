@@ -28,9 +28,12 @@ export default function AddHabitScreen() {
       streak_count: 0,
       last_completed: new Date().toISOString(),
       created_at: new Date().toISOString(),
-    })
-    
+    });
 
+    setTitle("");
+    setDescription("");
+    setFrequency("daily");
+    
     router.back();
   } catch (error) {
     if (error instanceof Error) {
@@ -43,13 +46,14 @@ export default function AddHabitScreen() {
   return (
     <View style={Styles.container}>
       <TextInput
+      value={title}
       onChangeText={setTitle}
         style={Styles.input}
         label="Title"
         textColor="#000"
         mode="outlined"
       />
-      <TextInput onChangeText={setDescription} style={Styles.input} label="Description" mode="outlined" />
+      <TextInput value={description} onChangeText={setDescription} style={Styles.input} label="Description" mode="outlined" />
       <View style={Styles.frequencyContainer}>
         <SegmentedButtons
           buttons={FREQUENCY_OPTIONS.map((freq) => ({

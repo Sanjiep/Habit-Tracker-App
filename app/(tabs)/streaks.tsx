@@ -15,8 +15,8 @@ import { Card, Text } from "react-native-paper";
 import { ScrollView } from "react-native-gesture-handler";
 
 export default function StreakScreen() {
-  const [habits, setHabits] = useState<Habit[]>();
-  const [completedHabits, setCompletedHabits] = useState<HabitCompletion[]>();
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [completedHabits, setCompletedHabits] = useState<HabitCompletion[]>([]);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -42,20 +42,25 @@ export default function StreakScreen() {
       }
     );
 
-     const channelCompletions = `databases.${DATABASE_ID}.collections.${COMPLETIONS_COLLECTION_ID}.documents`;
+    const channelCompletions = `databases.${DATABASE_ID}.collections.${COMPLETIONS_COLLECTION_ID}.documents`;
     const subscribeCompletions = client.subscribe(
       channelCompletions,
       (response: RealtimeResponse) => {
         if (
           response.events.includes(
             "databases.*.collections.*.documents.*.create"
+          ) ||
+          response.events.includes(
+            "databases.*.collections.*.documents.*.update"
+          ) ||
+          response.events.includes(
+            "databases.*.collections.*.documents.*.delete"
           )
         ) {
           fetchCompletions();
         }
       }
     );
-
 
     fetchHabits();
     fetchCompletions();
@@ -71,9 +76,8 @@ export default function StreakScreen() {
       const response = await databases.listDocuments(
         DATABASE_ID,
         HABITS_COLLECTION_ID,
-        [Query.equal("user_id", user?.$id || "")]
+        [Query.equal("user_id", user?.$id ?? "")]
       );
-
       setHabits(response.documents as Habit[]);
     } catch (error) {
       console.error("Error fetching habits:", error);
@@ -101,103 +105,124 @@ export default function StreakScreen() {
     totalStreak: number;
   }
 
-  const getStreakData = (habitId: string) => {
-    const habitCompletions = completedHabits
-      ?.filter((c) => c.habit_id === habitId)
-      .sort(
-        (a, b) =>
-          new Date(b.completed_at).getTime() -
-          new Date(a.completed_at).getTime()
-      );
+  const getStreakData = (habitId: string): StreakData => {
+    // Only keep one completion per day (by date string)
+    const uniqueDates = Array.from(
+      new Set(
+        completedHabits
+          .filter((c) => c.habit_id === habitId)
+          .map((c) => new Date(c.completed_at).toDateString())
+      )
+    )
+      .map((dateStr) => new Date(dateStr))
+      .sort((a, b) => a.getTime() - b.getTime());
 
-    if (!habitCompletions || habitCompletions.length === 0) {
+    if (!uniqueDates || uniqueDates.length === 0) {
       return { streak: 0, bestStreak: 0, totalStreak: 0 };
     }
 
-    // Calculate streaks
     let streak = 0;
     let bestStreak = 0;
-    let totalStreak = habitCompletions.length;
-    let currentStreak = 0;
-    let lastDate: Date | null = null;
+    let totalStreak = uniqueDates.length;
+    let currentStreak = 1;
+    let lastDate = uniqueDates[0];
 
-    habitCompletions.forEach((c) => {
-      const date = new Date(c.completed_at);
-
-      if (lastDate) {
-        const diffTime =
-          date.getTime() - lastDate.getTime() / (1000 * 60 * 60 * 24);
-
-        if (diffTime <= 1.5) {
-          currentStreak += 1;
-        } else {
-          currentStreak = 1; // Reset streak
-        }
-      } else {
+    for (let i = 1; i < uniqueDates.length; i++) {
+      const diffDays = Math.round(
+        (uniqueDates[i].getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      if (diffDays === 1) {
+        currentStreak++;
+      } else if (diffDays > 1) {
         if (currentStreak > bestStreak) bestStreak = currentStreak;
-        streak = currentStreak;
-        lastDate = date;
+        currentStreak = 1;
       }
-    });
+      lastDate = uniqueDates[i];
+    }
+    if (currentStreak > bestStreak) bestStreak = currentStreak;
+
+    // Check if last completion is today or yesterday for current streak
+    const today = new Date();
+    const lastCompletion = uniqueDates[uniqueDates.length - 1];
+    const diffFromToday = Math.round(
+      (today.setHours(0, 0, 0, 0) - lastCompletion.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+    streak = diffFromToday <= 1 ? currentStreak : 0;
 
     return { streak, bestStreak, totalStreak };
   };
 
-  const habitStreaks = habits?.map((habit) => {
-    const { streak, bestStreak = 0, totalStreak } = getStreakData(habit.$id);
+  const habitStreaks = habits.map((habit) => {
+    const { streak, bestStreak, totalStreak } = getStreakData(habit.$id);
     return { habit, streak, bestStreak, totalStreak };
   });
-  
-  const rankedHabits = habitStreaks.sort((a, b) => a.bestStreak - b.bestStreak // Sort in descending order if needed
-  );
 
-  const badgeStyles = 
+  const rankedHabits = habitStreaks.sort((a, b) => b.bestStreak - a.bestStreak);
+
+  const badgeStyles = [styles.badge1, styles.badge2, styles.badge3];
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Habits Streak</Text>
-      {rankedHabits?.length > 0 && (
-        <View>
-          <Text>🥇 Top Streaks</Text>
-          {rankedHabits.slice(0, 3).map(({ item, key }) => (
-            <View key={key}>
+      <Text style={styles.title} variant="headlineSmall">
+        Habits Streak
+      </Text>
 
+      {rankedHabits.length > 0 && (
+        <View style={styles.rankingContainer}>
+          <Text style={styles.rankingTitle}>🏅 Top Streaks</Text>
+          {rankedHabits.slice(0, 3).map((item, key) => (
+            <View key={key} style={styles.rankingRow}>
+              <View style={[styles.rankingBadge, badgeStyles[key]]}>
+                <Text style={styles.rankingBadgeText}> {key + 1} </Text>
+              </View>
+              <Text style={styles.rankingHabit}> {item.habit.title}</Text>
+              <Text style={styles.rankingStreak}> {item.bestStreak}</Text>
             </View>
           ))}
         </View>
       )}
+
       {habits?.length === 0 ? (
         <View>
           <Text>No Habits yet. Add Habit</Text>
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
-        {rankedHabits?.map(({ habit, streak, totalStreak, bestStreak }, idx) => (
-          <Card key={habit.$id}
-              style={[styles.card, idx === 0 && styles.firstCard]}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.habitTitle}>{habit.title}</Text>
-              <Text style={styles.habitDescription}>{habit.description}</Text>
+          {rankedHabits?.map(
+            ({ habit, streak, totalStreak, bestStreak }, idx) => (
+              <Card
+                key={habit.$id}
+                style={[styles.card, idx === 0 && styles.firstCard]}
+              >
+                <Card.Content>
+                  <Text variant="titleMedium" style={styles.habitTitle}>
+                    {habit.title}
+                  </Text>
+                  <Text style={styles.habitDescription}>
+                    {habit.description}
+                  </Text>
 
-              <View style={styles.statsRow}>
-                <View style={styles.streakBadge}>
-                  <Text style={styles.statsText}>🔥{streak}</Text>
-                  <Text style={styles.statsLabel}>Current</Text>
-                </View>
+                  <View style={styles.statsRow}>
+                    <View style={styles.streakBadge}>
+                      <Text style={styles.statsText}>🔥 {streak}</Text>
+                      <Text style={styles.statsLabel}>Current</Text>
+                    </View>
 
-                <View style={styles.streakBest}>
-                  <Text style={styles.statsText}>🏆{bestStreak}</Text>
-                  <Text style={styles.statsLabel}>Best</Text>
-                </View>
+                    <View style={styles.streakBest}>
+                      <Text style={styles.statsText}>🏆 {bestStreak}</Text>
+                      <Text style={styles.statsLabel}>Best</Text>
+                    </View>
 
-                <View style={styles.streakTotal}>
-                  <Text style={styles.statsText}>✅{totalStreak}</Text>
-                  <Text style={styles.statsLabel}>Total</Text>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
-        ))}
-      </ScrollView>
+                    <View style={styles.streakTotal}>
+                      <Text style={styles.statsText}>✅ {totalStreak}</Text>
+                      <Text style={styles.statsLabel}>Total</Text>
+                    </View>
+                  </View>
+                </Card.Content>
+              </Card>
+            )
+          )}
+        </ScrollView>
       )}
     </View>
   );
@@ -280,5 +305,65 @@ const styles = StyleSheet.create({
   statsLabel: {
     fontSize: 12,
     color: "#888",
+  },
+  rankingContainer: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  rankingTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 12,
+    color: "#7c4dff",
+    letterSpacing: 0.5,
+  },
+  rankingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    paddingBottom: 8,
+  },
+  rankingBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    backgroundColor: "#e0e0e0",
+  },
+  badge1: {
+    backgroundColor: "#ffd700",
+  },
+  badge2: {
+    backgroundColor: "#c0c0c0",
+  },
+  badge3: {
+    backgroundColor: "#cd7f32",
+  },
+  rankingBadgeText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  rankingHabit: {
+    flex: 1,
+    fontSize: 16,
+    color: "#333",
+    fontWeight: "500",
+  },
+  rankingStreak: {
+    fontSize: 14,
+    color: "#7c4dff",
+    fontWeight: "bold",
   },
 });
